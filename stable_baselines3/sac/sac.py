@@ -134,7 +134,8 @@ class SAC(OffPolicyAlgorithm):
         self.target_update_interval = target_update_interval
         self.ent_coef_optimizer = None
 
-        self.marion_ent_coef =  0    
+        self.record_ent_coef = 0 
+        self.record_log_prob = 0   
 
         if _init_setup_model:
             self._setup_model()
@@ -197,7 +198,10 @@ class SAC(OffPolicyAlgorithm):
                 self.actor.reset_noise()
 
             # Action by the current actor for the sampled state
-            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
+            log_std, output = self.actor.action_log_prob(replay_data.observations)
+            actions_pi, log_prob = output 
+            # log_std, actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
+            
             log_prob = log_prob.reshape(-1, 1)
 
             ent_coef_loss = None
@@ -211,9 +215,9 @@ class SAC(OffPolicyAlgorithm):
             else:
                 ent_coef = self.ent_coef_tensor
 
-            ent_coef = th.tensor([1.5])
+            ent_coef = th.tensor([2.0]).to(device=self.device)
 
-            self.marion_ent_coef = ent_coef.item()
+            self.record_ent_coef = ent_coef.item()
 
             ent_coefs.append(ent_coef.item())
 
@@ -226,7 +230,10 @@ class SAC(OffPolicyAlgorithm):
 
             with th.no_grad():
                 # Select action according to policy
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
+                log_std, output = self.actor.action_log_prob(replay_data.next_observations)
+                next_actions, next_log_prob = output
+                # log_std, next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
+                
                 # Compute the target Q value: min over all critics targets
                 targets = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 target_q, _ = th.min(targets, dim=1, keepdim=True)
@@ -235,9 +242,10 @@ class SAC(OffPolicyAlgorithm):
                 # td error + entropy term
                 q_backup = replay_data.rewards + (1 - replay_data.dones) * self.gamma * target_q
 
+            self.record_log_prob = log_std
+
             # Get current Q estimates for each critic network
             # using action from the replay buffer
-            # import pdb; pdb.set_trace()
             current_q_estimates = self.critic(replay_data.observations.float(), replay_data.actions.float())
 
             # Compute critic loss

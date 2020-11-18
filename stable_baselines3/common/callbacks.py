@@ -100,7 +100,8 @@ class BaseCallback(ABC):
         pass
 
     def on_episode_end(self) -> None:
-        self.curr_ent_coef = self.model.marion_ent_coef
+        self.curr_ent_coef = self.model.record_ent_coef
+        self.curr_log_prob = self.model.record_log_prob
         self._on_episode_end()
 
     def _on_episode_end(self) -> None: 
