@@ -2,7 +2,7 @@ import io
 import pathlib
 import time
 import warnings
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import gym
 import numpy as np
@@ -15,7 +15,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
-from stable_baselines3.common.type_aliases import GymEnv, LearningRateSchedule, MaybeCallback, RolloutReturn
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn
 from stable_baselines3.common.utils import safe_mean
 from stable_baselines3.common.vec_env import VecEnv
 
@@ -76,7 +76,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         policy: Type[BasePolicy],
         env: Union[GymEnv, str],
         policy_base: Type[BasePolicy],
-        learning_rate: Union[float, LearningRateSchedule],
+        learning_rate: Union[float, Callable],
         buffer_size: int = int(1e6),
         learning_starts: int = 100,
         batch_size: int = 256,
@@ -192,7 +192,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         self,
         total_timesteps: int,
         eval_env: Optional[GymEnv],
-        callback: MaybeCallback = None,
+        callback: Union[None, Callable, List[BaseCallback], BaseCallback] = None,
         eval_freq: int = 10000,
         n_eval_episodes: int = 5,
         log_path: Optional[str] = None,
@@ -452,6 +452,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                     break
 
             if done:
+                callback.on_episode_end()
                 total_episodes += 1
                 self._episode_num += 1
                 episode_rewards.append(episode_reward)

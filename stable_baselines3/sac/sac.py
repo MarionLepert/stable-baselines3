@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 import torch as th
@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from stable_baselines3.common import logger
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-from stable_baselines3.common.type_aliases import GymEnv, LearningRateSchedule, MaybeCallback
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback
 from stable_baselines3.common.utils import polyak_update
 from stable_baselines3.sac.policies import SACPolicy
 
@@ -74,7 +74,7 @@ class SAC(OffPolicyAlgorithm):
         self,
         policy: Union[str, Type[SACPolicy]],
         env: Union[GymEnv, str],
-        learning_rate: Union[float, LearningRateSchedule] = 3e-4,
+        learning_rate: Union[float, Callable] = 3e-4,
         buffer_size: int = int(1e6),
         learning_starts: int = 100,
         batch_size: int = 256,
@@ -133,6 +133,8 @@ class SAC(OffPolicyAlgorithm):
         self.ent_coef = ent_coef
         self.target_update_interval = target_update_interval
         self.ent_coef_optimizer = None
+
+        self.marion_ent_coef =  0    
 
         if _init_setup_model:
             self._setup_model()
@@ -209,6 +211,10 @@ class SAC(OffPolicyAlgorithm):
             else:
                 ent_coef = self.ent_coef_tensor
 
+            ent_coef = th.tensor([1.5])
+
+            self.marion_ent_coef = ent_coef.item()
+
             ent_coefs.append(ent_coef.item())
 
             # Optimize entropy coefficient, also called
@@ -231,7 +237,8 @@ class SAC(OffPolicyAlgorithm):
 
             # Get current Q estimates for each critic network
             # using action from the replay buffer
-            current_q_estimates = self.critic(replay_data.observations, replay_data.actions)
+            # import pdb; pdb.set_trace()
+            current_q_estimates = self.critic(replay_data.observations.float(), replay_data.actions.float())
 
             # Compute critic loss
             critic_loss = 0.5 * sum([F.mse_loss(current_q, q_backup) for current_q in current_q_estimates])
@@ -304,3 +311,26 @@ class SAC(OffPolicyAlgorithm):
         else:
             saved_pytorch_variables.append("ent_coef_tensor")
         return state_dicts, saved_pytorch_variables
+
+
+    def get_qvalues_at_state(self, state): 
+
+        from itertools import product
+
+        num_actions = self.env.action_space.shape[0]
+        all_action_coords = []
+        for a in range(num_actions):
+            action_coords = np.linspace(self.env.action_space.low[a], self.env.action_space.high[a], 25)
+            all_action_coords.append(action_coords)
+
+        all_action_possibilities = th.from_numpy(np.array(tuple(product(*all_action_coords))))
+      
+        obs = th.from_numpy(np.tile(state, (len(all_action_possibilities),1)))
+
+        # import pdb; pdb.set_trace()
+
+        q_values = th.cat(self.critic.forward(obs, all_action_possibilities), dim=1)
+
+        # import pdb; pdb.set_trace()
+        return q_values, all_action_possibilities
+

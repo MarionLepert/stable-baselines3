@@ -99,6 +99,13 @@ class BaseCallback(ABC):
     def _on_rollout_end(self) -> None:
         pass
 
+    def on_episode_end(self) -> None:
+        self.curr_ent_coef = self.model.marion_ent_coef
+        self._on_episode_end()
+
+    def _on_episode_end(self) -> None: 
+        pass
+
     def update_locals(self, locals_: Dict[str, Any]) -> None:
         """
         Update the references to the local variables.
@@ -200,6 +207,10 @@ class CallbackList(BaseCallback):
         for callback in self.callbacks:
             callback.on_training_end()
 
+    def _on_episode_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_episode_end()
+
     def update_child_locals(self, locals_: Dict[str, Any]) -> None:
         """
         Update the references to the local variables.
@@ -248,7 +259,7 @@ class ConvertCallback(BaseCallback):
     :param verbose:
     """
 
-    def __init__(self, callback: Callable[[Dict[str, Any], Dict[str, Any]], bool], verbose: int = 0):
+    def __init__(self, callback: Callable, verbose: int = 0):
         super(ConvertCallback, self).__init__(verbose)
         self.callback = callback
 
@@ -276,8 +287,6 @@ class EvalCallback(EventCallback):
     :param deterministic: Whether to render or not the environment during evaluation
     :param render: Whether to render or not the environment during evaluation
     :param verbose:
-    :param warn: Passed to ``evaluate_policy`` (warns if ``eval_env`` has not been
-        wrapped with a Monitor wrapper)
     """
 
     def __init__(
@@ -291,7 +300,6 @@ class EvalCallback(EventCallback):
         deterministic: bool = True,
         render: bool = False,
         verbose: int = 1,
-        warn: bool = True,
     ):
         super(EvalCallback, self).__init__(callback_on_new_best, verbose=verbose)
         self.n_eval_episodes = n_eval_episodes
@@ -300,7 +308,6 @@ class EvalCallback(EventCallback):
         self.last_mean_reward = -np.inf
         self.deterministic = deterministic
         self.render = render
-        self.warn = warn
 
         # Convert to VecEnv for consistency
         if not isinstance(eval_env, VecEnv):
@@ -343,7 +350,6 @@ class EvalCallback(EventCallback):
                 render=self.render,
                 deterministic=self.deterministic,
                 return_episode_rewards=True,
-                warn=self.warn,
             )
 
             if self.log_path is not None:
