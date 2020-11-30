@@ -522,6 +522,26 @@ class BaseAlgorithm(ABC):
         objects_needing_update = set(self._get_torch_save_params()[0])
         updated_objects = set()
 
+        # del params['actor.optimizer']
+        # del params['critic.optimizer']
+        # del params['ent_coef_optimizer']
+
+        # actor_keys = []
+        # critic_keys = []
+        # for key, val in params['policy'].items():
+        #     if 'actor' in key:
+        #         actor_keys.append(key)
+        #     if 'critic' in key: 
+        #         critic_keys.append(key)
+
+        # for key in actor_keys:
+        #     del params['policy'][key]
+
+        # for key in critic_keys:
+        #     del params['policy'][key]
+
+        # import pdb; pdb.set_trace()
+
         for name in params:
             attr = None
             try:
@@ -532,6 +552,7 @@ class BaseAlgorithm(ABC):
                 # Catch anything for now.
                 raise ValueError(f"Key {name} is an invalid object name.")
 
+            # import pdb; pdb.set_trace()
             if isinstance(attr, th.optim.Optimizer):
                 # Optimizers do not support "strict" keyword...
                 # Seems like they will just replace the whole
@@ -552,6 +573,104 @@ class BaseAlgorithm(ABC):
             else:
                 # Assume attr is th.nn.Module
                 attr.load_state_dict(params[name], strict=exact_match)
+            updated_objects.add(name)
+
+        if exact_match and updated_objects != objects_needing_update:
+            raise ValueError(
+                "Names of parameters do not match agents' parameters: "
+                f"expected {objects_needing_update}, got {updated_objects}"
+            )
+
+
+    def set_some_parameters(
+        self,
+        initial_parameters,
+        load_path_or_dict: Union[str, Dict[str, Dict]],
+        exact_match: bool = True,
+        device: Union[th.device, str] = "auto",
+    ) -> None:
+        """
+        Load parameters from a given zip-file or a nested dictionary containing parameters for
+        different modules (see ``get_parameters``).
+
+        :param load_path_or_iter: Location of the saved data (path or file-like, see ``save``), or a nested
+            dictionary containing nn.Module parameters used by the policy. The dictionary maps
+            object names to a state-dictionary returned by ``torch.nn.Module.state_dict()``.
+        :param exact_match: If True, the given parameters should include parameters for each
+            module and each of their parameters, otherwise raises an Exception. If set to False, this
+            can be used to update only specific parameters.
+        :param device: Device on which the code should run.
+        """
+        params = None
+        if isinstance(load_path_or_dict, dict):
+            params = load_path_or_dict
+        else:
+            _, params, _ = load_from_zip_file(load_path_or_dict, device=device)
+
+        # Keep track which objects were updated.
+        # `_get_torch_save_params` returns [params, other_pytorch_variables].
+        # We are only interested in former here.
+        objects_needing_update = set(self._get_torch_save_params()[0])
+        updated_objects = set()
+
+        # del params['actor.optimizer']
+        # del params['critic.optimizer']
+        # del params['ent_coef_optimizer']
+
+        actor_keys = []
+        critic_keys = []
+        for key, val in params['policy'].items():
+            if 'actor' in key:
+                actor_keys.append(key)
+            if 'critic' in key: 
+                critic_keys.append(key)
+
+        for key in actor_keys:
+            initial_parameters['policy'][key] = params['policy'][key]
+
+        initial_parameters['actor.optimizer'] = params['actor.optimizer']
+
+
+        for key in critic_keys:
+            initial_parameters['policy'][key] = params['policy'][key]
+
+        initial_parameters['critic.optimizer'] = params['critic.optimizer']
+
+
+        initial_parameters['ent_coef_optimizer'] = params['ent_coef_optimizer']
+        # import pdb; pdb.set_trace()
+
+        for name in initial_parameters:
+            attr = None
+            try:
+                attr = recursive_getattr(self, name)
+            except Exception:
+                # What errors recursive_getattr could throw? KeyError, but
+                # possible something else too (e.g. if key is an int?).
+                # Catch anything for now.
+                raise ValueError(f"Key {name} is an invalid object name.")
+
+            # import pdb; pdb.set_trace()
+            if isinstance(attr, th.optim.Optimizer):
+                # Optimizers do not support "strict" keyword...
+                # Seems like they will just replace the whole
+                # optimizer state with the given one.
+                # On top of this, optimizer state-dict
+                # seems to change (e.g. first ``optim.step()``),
+                # which makes comparing state dictionary keys
+                # invalid (there is also a nesting of dictionaries
+                # with lists with dictionaries with ...), adding to the
+                # mess.
+                #
+                # TL;DR: We might not be able to reliably say
+                # if given state-dict is missing keys.
+                #
+                # Solution: Just load the state-dict as is, and trust
+                # the user has provided a sensible state dictionary.
+                attr.load_state_dict(initial_parameters[name])
+            else:
+                # Assume attr is th.nn.Module
+                attr.load_state_dict(initial_parameters[name], strict=exact_match)
             updated_objects.add(name)
 
         if exact_match and updated_objects != objects_needing_update:
@@ -616,6 +735,10 @@ class BaseAlgorithm(ABC):
         model.__dict__.update(data)
         model.__dict__.update(kwargs)
         model._setup_model()
+
+        # import pdb; pdb.set_trace()
+        # initial_parameters = model.get_parameters()
+        # model.set_some_parameters(initial_parameters, params, exact_match=True, device=device)
 
         # put state_dicts back in place
         model.set_parameters(params, exact_match=True, device=device)

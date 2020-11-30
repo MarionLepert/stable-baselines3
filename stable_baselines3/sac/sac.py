@@ -203,6 +203,7 @@ class SAC(OffPolicyAlgorithm):
             # log_std, actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
             
             log_prob = log_prob.reshape(-1, 1)
+            
 
             ent_coef_loss = None
             if self.ent_coef_optimizer is not None:
@@ -215,7 +216,7 @@ class SAC(OffPolicyAlgorithm):
             else:
                 ent_coef = self.ent_coef_tensor
 
-            ent_coef = th.tensor([2.0]).to(device=self.device)
+            # ent_coef = th.tensor([0]).to(device=self.device)
 
             self.record_ent_coef = ent_coef.item()
 
